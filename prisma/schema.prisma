@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+model User {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  passwordHash     String
+  name             String
+  role             Role     @default(STUDENT)
+  refreshTokenHash String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  attempts         TestAttempt[]
+  missedQuestions  MissedQuestion[]
+
+  /// As a student: the teachers assigned to them.
+  assignedTeachers TeacherStudentAssignment[] @relation("StudentAssignments")
+  /// As a teacher: the students assigned to them.
+  assignedStudents TeacherStudentAssignment[] @relation("TeacherAssignments")
+
+  @@index([role])
+}
+
+model TeacherStudentAssignment {
+  id        String   @id @default(cuid())
+  teacherId String
+  studentId String
+  createdAt DateTime @default(now())
+
+  teacher User @relation("TeacherAssignments", fields: [teacherId], references: [id], onDelete: Cascade)
+  student User @relation("StudentAssignments", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, studentId])
+  @@index([studentId])
+}
+
+model Test {
+  id          String   @id
+  title       Json
+  description Json
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions TestQuestion[]
+  attempts  TestAttempt[]
+}
+
+/// Explicit join (not implicit m:n) because question order within a test matters.
+model TestQuestion {
+  testId     String
+  questionId String
+  position   Int
+
+  test     Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([testId, questionId])
+  @@index([testId, position])
+}
+
+model Question {
+  id              String   @id
+  imageUrl        String?
+  text            Json
+  info            Json?
+  correctOptionId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  options   QuestionOption[]
+  testLinks TestQuestion[]
+  answers   Answer[]
+  missedBy  MissedQuestion[]
+}
+
+model QuestionOption {
+  id         String @id @default(cuid())
+  questionId String
+  /// Original per-question option id from the legacy JSON data (e.g. "1".."5"),
+  /// unique only within a question. Kept for seed traceability, not used at runtime.
+  legacyId   String?
+  text       Json
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+model TestAttempt {
+  id             String   @id @default(cuid())
+  userId         String
+  /// Nullable: null for the synthetic "missed questions" practice session, which has no real Test row.
+  testId         String?
+  /// Denormalized snapshot so history still shows a title if the test is later renamed/deleted.
+  testTitle      Json
+  score          Int
+  total          Int
+  percentage     Int
+  passed         Boolean
+  elapsedSeconds Int
+  completedAt    DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  test    Test?    @relation(fields: [testId], references: [id], onDelete: SetNull)
+  answers Answer[]
+
+  @@index([userId, completedAt])
+  @@index([testId])
+}
+
+model Answer {
+  id               String  @id @default(cuid())
+  attemptId        String
+  questionId       String
+  selectedOptionId String
+  correct          Boolean
+
+  attempt  TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+}
+
+model MissedQuestion {
+  userId     String
+  questionId String
+  missedAt   DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, questionId])
+}
