@@ -6,6 +6,7 @@ export interface PublicUser {
   name: string;
   role: User['role'];
   createdAt: Date;
+  avatarUrl: string;
 }
 
 export function toPublicUser(user: User): PublicUser {
@@ -15,5 +16,6 @@ export function toPublicUser(user: User): PublicUser {
     name: user.name,
     role: user.role,
     createdAt: user.createdAt,
+    avatarUrl: `/users/${user.id}/avatar`,
   };
 }
